@@ -91,26 +91,28 @@ function App() {
     setLoading(true); setError("");
     try {
       const symbols = PORTFOLIO_BASE.map(s => s.id + ".TW").join(",");
-      const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${symbols}&range=1d&interval=1d`;
-      const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-      const wrapper = await res.json();
-      const data = JSON.parse(wrapper.contents);
+      const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=regularMarketPrice,regularMarketChangePercent`;
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch(e) { throw new Error("JSON parse failed"); }
       const result = {};
-      if (data.spark?.result) {
-        data.spark.result.forEach(item => {
-          const id = item.symbol.replace(".TW","");
-          const resp = item.response?.[0];
-          const price = resp?.meta?.regularMarketPrice || 0;
-          const prev  = resp?.meta?.chartPreviousClose || price;
-          const chg   = prev ? (((price - prev) / prev) * 100).toFixed(2) : "0.00";
-          result[id]  = { price, changePct: parseFloat(chg) };
-        });
-      }
+      const quotes = data?.quoteResponse?.result || [];
+      quotes.forEach(q => {
+        const id = q.symbol.replace(".TW","").replace(".TWO","");
+        result[id] = {
+          price: q.regularMarketPrice || 0,
+          changePct: parseFloat((q.regularMarketChangePercent || 0).toFixed(2))
+        };
+      });
+      if (Object.keys(result).length === 0) throw new Error("No data returned");
       setPrices(result);
       const now = new Date();
       setLastUpdate(`${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
     } catch(e) {
-      setError("股價抓取失敗，顯示上次資料");
+      setError("股價抓取失敗：" + e.message);
     }
     setLoading(false);
   }
